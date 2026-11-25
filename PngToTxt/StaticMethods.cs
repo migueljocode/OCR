@@ -98,6 +98,26 @@ internal static class TesseractSetup
     }
 
     /// <summary>
+    /// Returns the OS-specific tesseract executable path or command name.
+    /// </summary>
+    internal static string GetTesseractExecutable()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            string[] candidates =
+            [
+                @"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                @"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+            ];
+            foreach (string exe in candidates)
+                if (File.Exists(exe))
+                    return exe;
+        }
+
+        return "tesseract";
+    }
+
+    /// <summary>
     /// Downloads any missing .traineddata files for the requested
     /// languages into the OS tessdata directory.
     /// </summary>
@@ -231,12 +251,7 @@ internal static class OcrProcessor
         {
             tempGray = ImagePreprocessor.ToGrayscaleTempFile(pngFile);
 
-            using var engine = new TesseractEngine(tessDataDir, language,
-                                                    EngineMode.Default);
-            using var img  = Pix.LoadFromFile(tempGray);
-            using var page = engine.Process(img);
-
-            string text = page.GetText();
+            string text = RunTesseract(tempGray, tessDataDir, language);
             string name = Path.GetFileName(pngFile);
 
             if (string.IsNullOrWhiteSpace(text))
@@ -261,13 +276,46 @@ internal static class OcrProcessor
         }
         catch (Exception ex)
         {
-            WriteThreadSafe($"  ✗ Error on '{Path.GetFileName(pngFile)}': {ex.Message}");
+            string msg = ex.InnerException?.Message ?? ex.Message;
+            WriteThreadSafe($"  ✗ Error on '{Path.GetFileName(pngFile)}': {msg}");
         }
         finally
         {
             if (tempGray != null && File.Exists(tempGray))
                 File.Delete(tempGray);
         }
+    }
+
+    private static string RunTesseract(string imagePath, string tessDataDir, string language)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = TesseractSetup.GetTesseractExecutable(),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add(imagePath);
+        psi.ArgumentList.Add("stdout");
+        psi.ArgumentList.Add("--tessdata-dir");
+        psi.ArgumentList.Add(tessDataDir);
+        psi.ArgumentList.Add("-l");
+        psi.ArgumentList.Add(language);
+
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start tesseract process.");
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"tesseract exited with code {process.ExitCode}: {error.Trim()}");
+
+        return output;
     }
 
     private static void WriteThreadSafe(string msg)
