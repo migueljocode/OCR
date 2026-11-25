@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and upload
+        required: true
+        default: v0.0.0
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rid: [linux-x64, win-x64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet publish Ocr -c Release -r ${{ matrix.rid }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocr-${{ matrix.rid }}
+          path: Ocr/publish/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  upload:
+    name: Upload release assets
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ocr-*
+          path: release-assets
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
