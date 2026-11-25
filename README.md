@@ -6,7 +6,7 @@ A unified, cross-platform CLI & interactive text extraction tool for **PDFs**, *
 
 - **Any supported input**:
   - **PDF (`.pdf`)** — choose direct embedded-text extraction via Poppler for text PDFs or page rendering plus OCR for scans/screenshots; output either **one combined `.txt`** or **one `.txt` per page**
-  - **Single image** (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.gif`) — outputs **one `.txt` file**
+  - **Single image** (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.gif`) — converts still images to grayscale before OCR and outputs **one `.txt` file**; multi-page TIFFs and animated GIFs are passed directly to Tesseract to preserve their frames
   - **Directory of PDFs and/or images** — when both types are present, choose whether to process both, PDFs only, or images only; choose a combined output, one `.txt` per input, or (for mixed inputs) one `.txt` per PDF plus one combined image `.txt` (`<file>.pdf.txt` for each PDF)
 - **OCR language data** (`fas.traineddata` and `eng.traineddata`, `tessdata_best`) is auto-downloaded only when OCR is selected:
   - Linux: `/usr/share/tesseract-ocr/5/tessdata`

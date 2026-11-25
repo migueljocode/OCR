@@ -1,12 +1,82 @@
 namespace Ocr;
 
-internal enum InputKind { Pdf, Image, Directory }
-internal enum OutputMode { SingleFile, PerItem, PdfPerFileImagesCombined }
-internal enum SortBy { Name, Number, Date, Size }
-internal enum PdfProcessingMode { TextExtraction, ImageOcr }
-internal enum RenderSize { Hd, FullHd, FourK }
-internal enum DirectoryFileSelection { Both, PdfOnly, ImagesOnly }
+/// <summary>Identifies the kind of input selected for OCR processing.</summary>
+internal enum InputKind
+{
+    /// <summary>A single PDF document.</summary>
+    Pdf,
+    /// <summary>A single supported image.</summary>
+    Image,
+    /// <summary>A folder containing supported PDFs, images, or both.</summary>
+    Directory
+}
 
+/// <summary>Controls how recognized text is grouped into output files.</summary>
+internal enum OutputMode
+{
+    /// <summary>Writes all selected input text into a combined file.</summary>
+    SingleFile,
+    /// <summary>Writes a separate text file for each page or source file.</summary>
+    PerItem,
+    /// <summary>Writes one file per PDF and one combined file for directory images.</summary>
+    PdfPerFileImagesCombined
+}
+
+/// <summary>Specifies the ordering applied to files in a directory.</summary>
+internal enum SortBy
+{
+    /// <summary>Sorts alphabetically by file name.</summary>
+    Name,
+    /// <summary>Sorts by the first number found in each file name.</summary>
+    Number,
+    /// <summary>Sorts by last modification time.</summary>
+    Date,
+    /// <summary>Sorts by file size.</summary>
+    Size
+}
+
+/// <summary>Selects direct PDF text extraction or image-based OCR.</summary>
+internal enum PdfProcessingMode
+{
+    /// <summary>Extracts embedded text without recognizing rendered page images.</summary>
+    TextExtraction,
+    /// <summary>Renders each page to an image and recognizes its text with Tesseract.</summary>
+    ImageOcr
+}
+
+/// <summary>Specifies the maximum bounding resolution used to render PDF pages.</summary>
+internal enum RenderSize
+{
+    /// <summary>Limits a rendered page to 1280 by 720 pixels.</summary>
+    Hd,
+    /// <summary>Limits a rendered page to 1920 by 1080 pixels.</summary>
+    FullHd,
+    /// <summary>Limits a rendered page to 3840 by 2160 pixels.</summary>
+    FourK
+}
+
+/// <summary>Controls which supported file types are selected from a directory.</summary>
+internal enum DirectoryFileSelection
+{
+    /// <summary>Processes both PDFs and images.</summary>
+    Both,
+    /// <summary>Processes PDFs and skips images.</summary>
+    PdfOnly,
+    /// <summary>Processes images and skips PDFs.</summary>
+    ImagesOnly
+}
+
+/// <summary>Contains validated input, processing, and output choices for one run.</summary>
+/// <param name="InputPath">Path to the source file or directory.</param>
+/// <param name="OutputDir">Directory where generated text files are written.</param>
+/// <param name="Kind">Whether the input is a PDF, image, or directory.</param>
+/// <param name="Language">Tesseract language code or codes joined with '+'.</param>
+/// <param name="OutputMode">How source text is grouped into output files.</param>
+/// <param name="PdfMode">How selected PDFs are processed.</param>
+/// <param name="DirectoryFiles">Which supported file types are processed from a directory.</param>
+/// <param name="SortBy">Ordering used for directory inputs.</param>
+/// <param name="RenderSize">Maximum rendering resolution for PDF image OCR.</param>
+/// <param name="Interactive">Whether the run started from interactive prompts.</param>
 internal sealed record RunOptions(
     string InputPath,
     string OutputDir,
@@ -19,11 +89,12 @@ internal sealed record RunOptions(
     RenderSize RenderSize,
     bool Interactive);
 
-// ───────────────────────────────────────────────
-//  AppRunner  —  top-level exception boundary
-// ───────────────────────────────────────────────
+/// <summary>Runs the application while converting unhandled exceptions into CLI errors.</summary>
 internal static class AppRunner
 {
+    /// <summary>Executes an application action and returns its process exit code.</summary>
+    /// <param name="action">The action to run.</param>
+    /// <returns>Zero when the action completes; one when it throws.</returns>
     internal static int Execute(Action action)
     {
         try
@@ -39,36 +110,51 @@ internal static class AppRunner
     }
 }
 
-// ───────────────────────────────────────────────
-//  ConsoleHelper  —  reusable console I/O
-// ───────────────────────────────────────────────
+/// <summary>Provides formatted console prompts, choices, status messages, and errors.</summary>
 internal static class ConsoleHelper
 {
+    /// <summary>Tracks whether the current run has displayed an interactive question.</summary>
     private static bool _wasPrompted;
 
+    /// <summary>Gets whether this run has asked the user any questions.</summary>
     internal static bool WasPrompted => _wasPrompted;
 
+    /// <summary>Resets prompt tracking before parsing a new run.</summary>
     internal static void ResetPromptState() => _wasPrompted = false;
 
+    /// <summary>Indicates whether ANSI-like console foreground coloring should be used.</summary>
     private static bool UseColor =>
         !Console.IsOutputRedirected &&
         Environment.GetEnvironmentVariable("NO_COLOR") is null;
 
+    /// <summary>Writes a colored message followed by a line break.</summary>
+    /// <param name="message">Text to display.</param>
+    /// <param name="color">Foreground color used when terminal colors are enabled.</param>
     internal static void WriteLine(string message, ConsoleColor color)
     {
         WriteColored(message, color, line: true);
     }
 
+    /// <summary>Writes a colored message without adding a line break.</summary>
+    /// <param name="message">Text to display.</param>
+    /// <param name="color">Foreground color used when terminal colors are enabled.</param>
     internal static void Write(string message, ConsoleColor color)
     {
         WriteColored(message, color, line: false);
     }
 
+    /// <summary>Writes an error message to standard error in red when colors are enabled.</summary>
+    /// <param name="message">Error text to display.</param>
     internal static void WriteError(string message)
     {
         WriteColored(message, ConsoleColor.Red, line: true, error: true);
     }
 
+    /// <summary>Writes to standard output or error with optional terminal coloring.</summary>
+    /// <param name="message">Text to display.</param>
+    /// <param name="color">Foreground color used when terminal colors are enabled.</param>
+    /// <param name="line">Whether to append a line break.</param>
+    /// <param name="error">Whether to write to standard error.</param>
     private static void WriteColored(string message, ConsoleColor color, bool line, bool error = false)
     {
         TextWriter writer = error ? Console.Error : Console.Out;
@@ -96,6 +182,7 @@ internal static class ConsoleHelper
         }
     }
 
+    /// <summary>Clears an attached terminal before a fully specified, non-interactive run.</summary>
     internal static void ClearForProcessingIfUnprompted()
     {
         if (!_wasPrompted &&
@@ -107,6 +194,10 @@ internal static class ConsoleHelper
         }
     }
 
+    /// <summary>Asks for a text value, optionally using a default when the answer is blank.</summary>
+    /// <param name="prompt">Question shown to the user.</param>
+    /// <param name="defaultValue">Value returned when the user enters no text; otherwise required.</param>
+    /// <returns>The trimmed answer or the supplied default.</returns>
     internal static string Ask(string prompt, string? defaultValue = null)
     {
         _wasPrompted = true;
@@ -124,6 +215,10 @@ internal static class ConsoleHelper
         return value;
     }
 
+    /// <summary>Asks for a positive integer value.</summary>
+    /// <param name="prompt">Question shown to the user.</param>
+    /// <param name="defaultValue">Value used when the user accepts the displayed default.</param>
+    /// <returns>The selected positive integer.</returns>
     internal static int AskInt(string prompt, int defaultValue)
     {
         string raw = Ask(prompt, defaultValue.ToString());
@@ -132,6 +227,10 @@ internal static class ConsoleHelper
         return result;
     }
 
+    /// <summary>Asks for a positive floating-point value.</summary>
+    /// <param name="prompt">Question shown to the user.</param>
+    /// <param name="defaultValue">Value used when the user accepts the displayed default.</param>
+    /// <returns>The selected positive number.</returns>
     internal static float AskFloat(string prompt, float defaultValue)
     {
         string raw = Ask(prompt, defaultValue.ToString());
@@ -140,6 +239,11 @@ internal static class ConsoleHelper
         return result;
     }
 
+    /// <summary>Displays numbered choices and returns the selected value.</summary>
+    /// <typeparam name="T">Type associated with each choice.</typeparam>
+    /// <param name="title">Question shown above the choices.</param>
+    /// <param name="choices">Labels and values offered to the user.</param>
+    /// <returns>The value associated with the selected choice.</returns>
     internal static T AskChoice<T>(string title, (string Label, T Value)[] choices)
     {
         _wasPrompted = true;
@@ -156,6 +260,9 @@ internal static class ConsoleHelper
         return choices[index - 1].Value;
     }
 
+    /// <summary>Displays successful completion and optionally waits for a key press.</summary>
+    /// <param name="message">Completion message to display.</param>
+    /// <param name="waitForKey">Whether to wait for input before exiting.</param>
     internal static void Done(string message, bool waitForKey)
     {
         WriteLine($"\n✓ {message}", ConsoleColor.Green);
@@ -167,25 +274,95 @@ internal static class ConsoleHelper
     }
 }
 
-// ───────────────────────────────────────────────
-//  CliOptions  —  CLI parsing, -h help, prompts
-// ───────────────────────────────────────────────
+/// <summary>Loads supported images and prepares still images for OCR.</summary>
+internal static class ImageProcessor
+{
+    /// <summary>Decodes an image file into a bitmap.</summary>
+    /// <param name="imagePath">Path of the image to decode.</param>
+    /// <returns>The decoded image bitmap.</returns>
+    /// <exception cref="InvalidOperationException">The image could not be decoded.</exception>
+    internal static SKBitmap Load(string imagePath) =>
+        SKBitmap.Decode(imagePath)
+        ?? throw new InvalidOperationException($"Could not decode image '{imagePath}'.");
+
+    /// <summary>Checks whether Tesseract should handle a potentially multi-frame image directly.</summary>
+    /// <param name="imagePath">Path of the image to inspect.</param>
+    /// <returns><see langword="true"/> for TIFF or GIF files; otherwise <see langword="false"/>.</returns>
+    internal static bool HasMultipleFrames(string imagePath) =>
+        Path.GetExtension(imagePath).ToLowerInvariant() is ".tif" or ".tiff" or ".gif";
+
+    /// <summary>Creates a grayscale copy of an image using weighted RGB luminance.</summary>
+    /// <param name="image">Source bitmap. The caller retains ownership of this bitmap.</param>
+    /// <returns>A new grayscale bitmap with the source dimensions and alpha values.</returns>
+    internal static SKBitmap ConvertToGrayscale(SKBitmap image)
+    {
+        var grayscale = new SKBitmap(image.Width, image.Height);
+
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < image.Width; x++)
+            {
+                SKColor pixel = image.GetPixel(x, y);
+                byte luminance = (byte)Math.Clamp(
+                    (int)Math.Round(0.299 * pixel.Red + 0.587 * pixel.Green + 0.114 * pixel.Blue),
+                    0,
+                    255);
+                grayscale.SetPixel(x, y, new SKColor(luminance, luminance, luminance, pixel.Alpha));
+            }
+        }
+
+        return grayscale;
+    }
+}
+
+/// <summary>Writes OCR text for a single image to its output file.</summary>
+internal static class ImageOutput
+{
+    /// <summary>Saves image OCR text using the input image's base name.</summary>
+    /// <param name="options">Run settings that provide the input and output paths.</param>
+    /// <param name="text">Recognized text to save.</param>
+    internal static void SaveText(RunOptions options, string text)
+    {
+        Directory.CreateDirectory(options.OutputDir);
+        string outputPath = Path.Combine(
+            options.OutputDir,
+            Path.GetFileNameWithoutExtension(options.InputPath) + ".txt");
+        File.WriteAllText(outputPath, text, Encoding.UTF8);
+        ConsoleHelper.WriteLine($"  ✓ Saved: {outputPath} ({text.Length:N0} chars)", ConsoleColor.Green);
+    }
+}
+
+/// <summary>Recognizes supported inputs and builds run settings from arguments or prompts.</summary>
 internal static class CliOptions
 {
+    /// <summary>File extensions accepted as image inputs.</summary>
     private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp", ".gif"
     };
 
+    /// <summary>Determines whether a path has a supported raster-image extension.</summary>
+    /// <param name="path">File path to inspect.</param>
+    /// <returns><see langword="true"/> when the extension is supported.</returns>
     internal static bool IsSupportedImage(string path) =>
         ImageExtensions.Contains(Path.GetExtension(path));
 
+    /// <summary>Determines whether a path has the PDF extension.</summary>
+    /// <param name="path">File path to inspect.</param>
+    /// <returns><see langword="true"/> when the extension is .pdf.</returns>
     internal static bool IsPdf(string path) =>
         Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Determines whether a path is a supported image or PDF.</summary>
+    /// <param name="path">File path to inspect.</param>
+    /// <returns><see langword="true"/> when the file type is supported.</returns>
     internal static bool IsSupportedFile(string path) =>
         IsSupportedImage(path) || IsPdf(path);
 
+    /// <summary>Parses command-line arguments or prompts the user for missing options.</summary>
+    /// <param name="args">Arguments passed to the application.</param>
+    /// <param name="options">Receives the parsed run settings when parsing succeeds.</param>
+    /// <returns><see langword="false"/> when help was shown; otherwise <see langword="true"/>.</returns>
     internal static bool TryParse(string[] args, out RunOptions options)
     {
         ConsoleHelper.ResetPromptState();
@@ -207,6 +384,8 @@ internal static class CliOptions
         return true;
     }
 
+    /// <summary>Collects input, processing, and output choices through interactive prompts.</summary>
+    /// <returns>Validated options for the requested run.</returns>
     private static RunOptions PromptInteractive()
     {
         string inputPath = ConsoleHelper.Ask("Input path (PDF, image file, or directory)");
@@ -323,6 +502,9 @@ internal static class CliOptions
             directoryFiles, sortBy, renderSize, true);
     }
 
+    /// <summary>Parses explicit arguments and asks only for applicable values that were omitted.</summary>
+    /// <param name="args">Command-line arguments to parse.</param>
+    /// <returns>Validated options for the requested run.</returns>
     private static RunOptions ParseArgs(string[] args)
     {
         string? input = null, output = null;
@@ -532,6 +714,11 @@ internal static class CliOptions
             directoryFiles, sort, renderSize, false);
     }
 
+    /// <summary>Validates an input path and determines whether it is a PDF, image, or directory.</summary>
+    /// <param name="path">Input path provided by the user.</param>
+    /// <returns>The corresponding input kind.</returns>
+    /// <exception cref="FileNotFoundException">The path does not exist.</exception>
+    /// <exception cref="NotSupportedException">The file extension is not supported.</exception>
     private static InputKind DetectInputKind(string path)
     {
         if (Directory.Exists(path))
@@ -550,6 +737,7 @@ internal static class CliOptions
             $"Unsupported file type '{Path.GetExtension(path)}'. Expected .pdf or an image ({string.Join(", ", ImageExtensions)}).");
     }
 
+    /// <summary>Prints command-line usage, supported options, and example invocations.</summary>
     private static void PrintHelp()
     {
         Console.WriteLine("""
@@ -600,6 +788,10 @@ internal static class CliOptions
             """);
     }
 
+    /// <summary>Filters supported directory files according to the requested file-type selection.</summary>
+    /// <param name="files">Supported candidate files discovered in the directory.</param>
+    /// <param name="selection">File types to retain.</param>
+    /// <returns>The candidate files included by the selection.</returns>
     internal static IEnumerable<string> SelectDirectoryFiles(
         IEnumerable<string> files,
         DirectoryFileSelection selection) => selection switch
@@ -610,14 +802,16 @@ internal static class CliOptions
     };
 }
 
-// ───────────────────────────────────────────────
-//  TesseractSetup  —  OS paths & traineddata
-// ───────────────────────────────────────────────
+/// <summary>Locates Tesseract and installs the trained language data needed for OCR.</summary>
 internal static class TesseractSetup
 {
+    /// <summary>Base URL used to download missing trained-data files.</summary>
     private const string BaseUrl =
         "https://github.com/tesseract-ocr/tessdata_best/raw/main/";
 
+    /// <summary>Finds or creates the platform-specific Tesseract tessdata directory.</summary>
+    /// <returns>Path where Tesseract language data is stored.</returns>
+    /// <exception cref="PlatformNotSupportedException">The operating system is not supported.</exception>
     internal static string GetTessDataPath()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -657,6 +851,8 @@ internal static class TesseractSetup
         throw new PlatformNotSupportedException("Only Linux and Windows are supported.");
     }
 
+    /// <summary>Finds the installed Tesseract executable or returns its command name.</summary>
+    /// <returns>An executable path suitable for starting Tesseract.</returns>
     internal static string GetTesseractExecutable()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -674,6 +870,9 @@ internal static class TesseractSetup
         return "tesseract";
     }
 
+    /// <summary>Downloads any missing trained-data files for the requested OCR languages.</summary>
+    /// <param name="languages">Language codes such as <c>fas</c> and <c>eng</c>.</param>
+    /// <exception cref="InvalidOperationException">A language-data file could not be downloaded.</exception>
     internal static void EnsureTrainedData(params string[] languages)
     {
         string tessDataDir = GetTessDataPath();
@@ -710,11 +909,12 @@ internal static class TesseractSetup
     }
 }
 
-// ───────────────────────────────────────────────
-//  PdfRenderer  —  PDF pages to temp PNG files
-// ───────────────────────────────────────────────
+/// <summary>Extracts embedded PDF text and reads page dimensions.</summary>
 internal static class PdfTextExtractor
 {
+    /// <summary>Extracts text from each PDF page, preferring Poppler for robust text layout.</summary>
+    /// <param name="pdfPath">PDF file to read.</param>
+    /// <returns>One extracted text string for each page, in document order.</returns>
     internal static string[] ExtractPages(string pdfPath)
     {
         string[] pages;
@@ -747,6 +947,10 @@ internal static class PdfTextExtractor
         return pages;
     }
 
+    /// <summary>Uses the Poppler command-line tool to extract UTF-8 text while preserving layout.</summary>
+    /// <param name="pdfPath">PDF file to read.</param>
+    /// <param name="text">Receives extracted text when Poppler is available.</param>
+    /// <returns><see langword="true"/> when Poppler completed successfully; <see langword="false"/> if it is unavailable.</returns>
     private static bool TryExtractWithPoppler(string pdfPath, out string text)
     {
         var psi = new ProcessStartInfo
@@ -792,6 +996,9 @@ internal static class PdfTextExtractor
         return true;
     }
 
+    /// <summary>Reads the width and height of every page in a PDF.</summary>
+    /// <param name="pdfPath">PDF file to inspect.</param>
+    /// <returns>Page dimensions in PDF points, in document order.</returns>
     internal static (double Width, double Height)[] GetPageSizes(string pdfPath)
     {
         using var document = UglyToad.PdfPig.PdfDocument.Open(pdfPath);
@@ -801,8 +1008,10 @@ internal static class PdfTextExtractor
     }
 }
 
+/// <summary>Renders PDF pages as temporary PNG images for OCR processing.</summary>
 internal static class PdfRenderer
 {
+    /// <summary>Synchronizes progress messages emitted by parallel page rendering.</summary>
     private static readonly object _consoleLock = new();
 
     static PdfRenderer()
@@ -816,6 +1025,11 @@ internal static class PdfRenderer
         }
     }
 
+    /// <summary>Renders every page within the selected resolution bounds while preserving aspect ratio.</summary>
+    /// <param name="pdfPath">PDF file to render.</param>
+    /// <param name="tempDir">Directory where page PNG files are created.</param>
+    /// <param name="renderSize">Maximum rendering resolution for each page.</param>
+    /// <returns>Temporary page-image paths in PDF page order.</returns>
     internal static string[] RenderToTempPngs(string pdfPath, string tempDir, RenderSize renderSize)
     {
         Directory.CreateDirectory(tempDir);
@@ -869,13 +1083,17 @@ internal static class PdfRenderer
     }
 }
 
-// ───────────────────────────────────────────────
-//  OcrEngine  —  parallel tesseract CLI runner
-// ───────────────────────────────────────────────
+/// <summary>Runs Tesseract against one or more images and returns recognized text.</summary>
 internal static class OcrEngine
 {
+    /// <summary>Synchronizes status messages emitted by parallel image recognition.</summary>
     private static readonly object _consoleLock = new();
 
+    /// <summary>Recognizes text from multiple images concurrently, preserving input order in the result.</summary>
+    /// <param name="imageFiles">Image paths to process.</param>
+    /// <param name="tessDataDir">Directory containing the requested Tesseract language data.</param>
+    /// <param name="language">Tesseract language code or codes joined with '+'.</param>
+    /// <returns>Recognized text for each image, at the matching index.</returns>
     internal static string[] RecognizeAll(string[] imageFiles, string tessDataDir, string language)
     {
         ConsoleHelper.WriteLine($"Running OCR on {imageFiles.Length} image(s) [{language}]...", ConsoleColor.Cyan);
@@ -901,7 +1119,50 @@ internal static class OcrEngine
         return texts;
     }
 
+    /// <summary>Prepares a still image as grayscale and recognizes its text.</summary>
+    /// <param name="imagePath">Path of the source image.</param>
+    /// <param name="tessDataDir">Directory containing the requested Tesseract language data.</param>
+    /// <param name="language">Tesseract language code or codes joined with '+'.</param>
+    /// <returns>Recognized text.</returns>
     internal static string RecognizeFile(string imagePath, string tessDataDir, string language)
+    {
+        if (ImageProcessor.HasMultipleFrames(imagePath))
+            return RecognizeFileWithoutPreprocessing(imagePath, tessDataDir, language);
+
+        using var image = ImageProcessor.Load(imagePath);
+        using var grayscaleImage = ImageProcessor.ConvertToGrayscale(image);
+        return RecognizeImage(grayscaleImage, tessDataDir, language);
+    }
+
+    /// <summary>Encodes a bitmap temporarily as PNG and asks Tesseract to recognize its text.</summary>
+    /// <param name="image">Image bitmap to recognize.</param>
+    /// <param name="tessDataDir">Directory containing the requested Tesseract language data.</param>
+    /// <param name="language">Tesseract language code or codes joined with '+'.</param>
+    /// <returns>Recognized text.</returns>
+    internal static string RecognizeImage(SKBitmap image, string tessDataDir, string language)
+    {
+        string tempPath = Path.Combine(Path.GetTempPath(), $"ocr_{Guid.NewGuid():N}.png");
+        try
+        {
+            using (var skImage = SKImage.FromBitmap(image))
+            using (var encodedImage = skImage.Encode(SKEncodedImageFormat.Png, 100))
+                File.WriteAllBytes(tempPath, encodedImage.ToArray());
+
+            return RecognizeFileWithoutPreprocessing(tempPath, tessDataDir, language);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
+
+    /// <summary>Invokes Tesseract for an image that should not be preprocessed.</summary>
+    /// <param name="imagePath">Image path passed directly to Tesseract.</param>
+    /// <param name="tessDataDir">Directory containing the requested Tesseract language data.</param>
+    /// <param name="language">Tesseract language code or codes joined with '+'.</param>
+    /// <returns>Recognized text.</returns>
+    private static string RecognizeFileWithoutPreprocessing(string imagePath, string tessDataDir, string language)
     {
         var psi = new ProcessStartInfo
         {
@@ -937,32 +1198,33 @@ internal static class OcrEngine
     }
 }
 
-// ───────────────────────────────────────────────
-//  OcrPipeline  —  orchestrates input → OCR → out
-// ───────────────────────────────────────────────
+/// <summary>Coordinates input processing, OCR or extraction, and text-file output.</summary>
 internal static class OcrPipeline
 {
+    /// <summary>Pattern used to find the first numeric value in a file name.</summary>
     private static readonly Regex NumberPattern = new(@"\d+", RegexOptions.Compiled);
 
+    /// <summary>Determines whether the selected input requires Tesseract OCR.</summary>
+    /// <param name="opts">Validated run options.</param>
+    /// <returns><see langword="true"/> when an image or OCR-mode PDF will be processed.</returns>
+    internal static bool RequiresOcr(RunOptions opts) => opts.Kind switch
+    {
+        InputKind.Image => true,
+        InputKind.Pdf => opts.PdfMode == PdfProcessingMode.ImageOcr,
+        InputKind.Directory => CliOptions.SelectDirectoryFiles(
+                Directory.GetFiles(opts.InputPath).Where(CliOptions.IsSupportedFile),
+                opts.DirectoryFiles)
+            .Any(file => CliOptions.IsSupportedImage(file) ||
+                (CliOptions.IsPdf(file) && opts.PdfMode == PdfProcessingMode.ImageOcr)),
+        _ => false
+    };
+
+    /// <summary>Creates the output directory and dispatches processing for the selected input kind.</summary>
+    /// <param name="opts">Validated run options.</param>
     internal static void Run(RunOptions opts)
     {
         Directory.CreateDirectory(opts.OutputDir);
-        bool needsOcr = opts.Kind switch
-        {
-            InputKind.Image => true,
-            InputKind.Pdf => opts.PdfMode == PdfProcessingMode.ImageOcr,
-            InputKind.Directory => CliOptions.SelectDirectoryFiles(
-                    Directory.GetFiles(opts.InputPath).Where(CliOptions.IsSupportedFile),
-                    opts.DirectoryFiles)
-                .Any(file => CliOptions.IsSupportedImage(file) ||
-                    (CliOptions.IsPdf(file) && opts.PdfMode == PdfProcessingMode.ImageOcr)),
-            _ => false
-        };
-
-        if (needsOcr)
-            TesseractSetup.EnsureTrainedData(opts.Language.Split('+'));
-
-        string tessDataDir = needsOcr ? TesseractSetup.GetTessDataPath() : string.Empty;
+        string tessDataDir = RequiresOcr(opts) ? TesseractSetup.GetTessDataPath() : string.Empty;
 
         switch (opts.Kind)
         {
@@ -978,15 +1240,20 @@ internal static class OcrPipeline
         }
     }
 
+    /// <summary>Loads, grayscales, and recognizes a single still image before saving its text.</summary>
+    /// <param name="opts">Validated image input and output settings.</param>
+    /// <param name="tessDataDir">Directory containing the required Tesseract language data.</param>
     private static void RunSingleImage(RunOptions opts, string tessDataDir)
     {
-        string text    = OcrEngine.RecognizeFile(opts.InputPath, tessDataDir, opts.Language);
-        string outPath = Path.Combine(opts.OutputDir, Path.GetFileNameWithoutExtension(opts.InputPath) + ".txt");
-
-        File.WriteAllText(outPath, text, Encoding.UTF8);
-        ConsoleHelper.WriteLine($"  ✓ Saved: {outPath} ({text.Length:N0} chars)", ConsoleColor.Green);
+        using var image = ImageProcessor.Load(opts.InputPath);
+        using var grayscaleImage = ImageProcessor.ConvertToGrayscale(image);
+        string text = OcrEngine.RecognizeImage(grayscaleImage, tessDataDir, opts.Language);
+        ImageOutput.SaveText(opts, text);
     }
 
+    /// <summary>Extracts embedded PDF text or renders and OCRs the PDF pages.</summary>
+    /// <param name="opts">Validated PDF input, processing, and output settings.</param>
+    /// <param name="tessDataDir">Directory containing Tesseract language data for OCR mode.</param>
     private static void RunPdf(RunOptions opts, string tessDataDir)
     {
         if (opts.PdfMode == PdfProcessingMode.TextExtraction)
@@ -1031,6 +1298,9 @@ internal static class OcrPipeline
         }
     }
 
+    /// <summary>Processes the selected directory files and writes the requested output layout.</summary>
+    /// <param name="opts">Validated directory selection and output settings.</param>
+    /// <param name="tessDataDir">Directory containing Tesseract language data when OCR is required.</param>
     private static void RunDirectory(RunOptions opts, string tessDataDir)
     {
         string[] files = CliOptions.SelectDirectoryFiles(
@@ -1083,6 +1353,11 @@ internal static class OcrPipeline
         }
     }
 
+    /// <summary>Processes one PDF for use as a text entry in combined directory output.</summary>
+    /// <param name="pdfPath">PDF file to process.</param>
+    /// <param name="opts">PDF extraction or OCR settings.</param>
+    /// <param name="tessDataDir">Directory containing Tesseract language data for OCR mode.</param>
+    /// <returns>Page-labeled text extracted from the PDF.</returns>
     private static string ProcessPdfAsCombinedText(string pdfPath, RunOptions opts, string tessDataDir)
     {
         if (opts.PdfMode == PdfProcessingMode.TextExtraction)
@@ -1103,6 +1378,10 @@ internal static class OcrPipeline
         }
     }
 
+    /// <summary>Sorts file paths using the selected ordering strategy.</summary>
+    /// <param name="files">File paths to sort.</param>
+    /// <param name="sortBy">Ordering strategy to apply.</param>
+    /// <returns>A new array in the selected order.</returns>
     private static string[] SortFiles(string[] files, SortBy sortBy) => sortBy switch
     {
         SortBy.Name => files.OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -1114,12 +1393,19 @@ internal static class OcrPipeline
         _ => files
     };
 
+    /// <summary>Returns the first number found in a file name, or zero when none exists.</summary>
+    /// <param name="name">File name to inspect.</param>
+    /// <returns>The first parsed integer in the name, or zero.</returns>
     private static int ExtractNumber(string name)
     {
         var match = NumberPattern.Match(name);
         return match.Success && int.TryParse(match.Value, out int n) ? n : 0;
     }
 
+    /// <summary>Formats non-empty recognized text with a heading for each source file.</summary>
+    /// <param name="sourceFiles">Source paths corresponding to the text entries.</param>
+    /// <param name="texts">Recognized text at the matching source-file index.</param>
+    /// <returns>Combined text with source headings.</returns>
     private static string FormatCombined(string[] sourceFiles, string[] texts)
     {
         var sb = new StringBuilder();
@@ -1136,6 +1422,9 @@ internal static class OcrPipeline
         return sb.ToString().Trim();
     }
 
+    /// <summary>Formats non-empty page text with a page-number heading.</summary>
+    /// <param name="pageTexts">Extracted or recognized page text in page order.</param>
+    /// <returns>Combined page-labeled text.</returns>
     private static string FormatPdfPages(string[] pageTexts)
     {
         var sb = new StringBuilder();
@@ -1152,12 +1441,19 @@ internal static class OcrPipeline
         return sb.ToString().Trim();
     }
 
+    /// <summary>Writes combined page-labeled PDF text to a file.</summary>
+    /// <param name="outFile">Destination text-file path.</param>
+    /// <param name="pageTexts">Text for each PDF page.</param>
     private static void WritePdfCombined(string outFile, string[] pageTexts)
     {
         File.WriteAllText(outFile, FormatPdfPages(pageTexts), Encoding.UTF8);
         ConsoleHelper.WriteLine($"PDF text saved to: {outFile}", ConsoleColor.Green);
     }
 
+    /// <summary>Writes each PDF page's text to its own page-numbered file.</summary>
+    /// <param name="outputDir">Destination directory.</param>
+    /// <param name="pdfName">PDF base name used in output filenames.</param>
+    /// <param name="pageTexts">Text for each PDF page.</param>
     private static void WritePdfPages(string outputDir, string pdfName, string[] pageTexts)
     {
         for (int i = 0; i < pageTexts.Length; i++)
@@ -1169,6 +1465,10 @@ internal static class OcrPipeline
         ConsoleHelper.WriteLine($"Saved {pageTexts.Length} PDF page text file(s) to: {outputDir}", ConsoleColor.Green);
     }
 
+    /// <summary>Writes one text file per PDF and one combined text file for all images.</summary>
+    /// <param name="outputDir">Destination directory.</param>
+    /// <param name="sourceFiles">Selected directory files.</param>
+    /// <param name="texts">Recognized or extracted text at the matching source-file index.</param>
     private static void WritePdfPerFileAndCombinedImages(
         string outputDir,
         string[] sourceFiles,
@@ -1201,12 +1501,20 @@ internal static class OcrPipeline
         }
     }
 
+    /// <summary>Writes combined source-labeled text to one UTF-8 file.</summary>
+    /// <param name="outFile">Destination text-file path.</param>
+    /// <param name="sourceFiles">Source paths corresponding to the text entries.</param>
+    /// <param name="texts">Text entries in source-file order.</param>
     private static void WriteCombined(string outFile, string[] sourceFiles, string[] texts)
     {
         File.WriteAllText(outFile, FormatCombined(sourceFiles, texts), Encoding.UTF8);
         ConsoleHelper.WriteLine($"Combined output saved to: {outFile}", ConsoleColor.Green);
     }
 
+    /// <summary>Writes one text file for each source file.</summary>
+    /// <param name="outputDir">Destination directory.</param>
+    /// <param name="sourceFiles">Source paths used to derive output names.</param>
+    /// <param name="texts">Text entries at the matching source-file index.</param>
     private static void WritePerItem(string outputDir, string[] sourceFiles, string[] texts)
     {
         for (int i = 0; i < sourceFiles.Length; i++)
