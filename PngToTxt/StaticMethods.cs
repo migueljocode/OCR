@@ -1,0 +1,268 @@
+using System.Runtime.InteropServices;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using Tesseract;
+
+namespace PngToTxt;
+
+// ───────────────────────────────────────────────
+//  ConsoleHelper  —  reusable console I/O
+// ───────────────────────────────────────────────
+internal static class ConsoleHelper
+{
+    internal static string Ask(string prompt)
+    {
+        Console.Write($"{prompt}: ");
+        string? value = Console.ReadLine()?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException($"'{prompt}' cannot be empty.");
+        return value;
+    }
+
+    internal static string AskLanguage()
+    {
+        Console.WriteLine("Select OCR language:");
+        Console.WriteLine("  1. Persian (fas)");
+        Console.WriteLine("  2. English (eng)");
+        Console.WriteLine("  3. Both    (fas+eng)");
+        Console.Write("Choice [1/2/3]: ");
+
+        return Console.ReadLine()?.Trim() switch
+        {
+            "1" => "fas",
+            "2" => "eng",
+            "3" => "fas+eng",
+            _   => throw new ArgumentException("Invalid language selection.")
+        };
+    }
+
+    internal static void Done(string message)
+    {
+        Console.WriteLine($"\n✓ {message}");
+        Console.Write("Press any key to exit...");
+        Console.Read();
+    }
+}
+
+// ───────────────────────────────────────────────
+//  TesseractSetup  —  auto-download traineddata
+// ───────────────────────────────────────────────
+internal static class TesseractSetup
+{
+    private const string BaseUrl =
+        "https://github.com/tesseract-ocr/tessdata_best/raw/main/";
+
+    /// <summary>
+    /// Returns the OS-specific tessdata directory where Tesseract
+    /// looks for .traineddata files.
+    /// </summary>
+    internal static string GetTessDataPath()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            // Standard Ubuntu/Debian Tesseract 5 path
+            string[] candidates =
+            [
+                "/usr/share/tesseract-ocr/5/tessdata",
+                "/usr/share/tesseract-ocr/4/tessdata",
+                "/usr/share/tessdata"
+            ];
+            foreach (string dir in candidates)
+                if (Directory.Exists(dir))
+                    return dir;
+
+            // Fallback: create the Tesseract 5 path
+            string fallback = candidates[0];
+            Directory.CreateDirectory(fallback);
+            return fallback;
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // Standard Windows Tesseract install paths
+            string[] candidates =
+            [
+                @"C:\Program Files\Tesseract-OCR\tessdata",
+                @"C:\Program Files (x86)\Tesseract-OCR\tessdata",
+                Path.Combine(Environment.GetFolderPath(
+                    Environment.SpecialFolder.LocalApplicationData),
+                    "Tesseract-OCR", "tessdata")
+            ];
+            foreach (string dir in candidates)
+                if (Directory.Exists(dir))
+                    return dir;
+
+            // Fallback: use AppData
+            string fallback = candidates[^1];
+            Directory.CreateDirectory(fallback);
+            return fallback;
+        }
+
+        throw new PlatformNotSupportedException(
+            "Only Linux and Windows are supported.");
+    }
+
+    /// <summary>
+    /// Downloads any missing .traineddata files for the requested
+    /// languages into the OS tessdata directory.
+    /// </summary>
+    internal static void EnsureTrainedData(params string[] languages)
+    {
+        string tessDataDir = GetTessDataPath();
+        Console.WriteLine($"Tessdata directory: {tessDataDir}");
+
+        using var http = new HttpClient();
+        http.Timeout = TimeSpan.FromMinutes(5);
+
+        foreach (string lang in languages)
+        {
+            string filePath = Path.Combine(tessDataDir, $"{lang}.traineddata");
+            if (File.Exists(filePath))
+            {
+                Console.WriteLine($"  ✓ {lang}.traineddata already present.");
+                continue;
+            }
+
+            string url = $"{BaseUrl}{lang}.traineddata";
+            Console.Write($"  ↓ Downloading {lang}.traineddata … ");
+
+            try
+            {
+                byte[] data = http.GetByteArrayAsync(url).GetAwaiter().GetResult();
+                File.WriteAllBytes(filePath, data);
+                Console.WriteLine($"OK ({data.Length:N0} bytes)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"FAILED");
+                throw new InvalidOperationException(
+                    $"Could not download {lang}.traineddata from {url}. " +
+                    $"Error: {ex.Message}\n" +
+                    $"Please download it manually to: {tessDataDir}");
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────
+//  ImagePreprocessor  —  grayscale via ImageSharp
+// ───────────────────────────────────────────────
+internal static class ImagePreprocessor
+{
+    /// <summary>
+    /// Loads an image, converts to grayscale, saves to a temp file,
+    /// and returns the temp path. Caller must delete the file.
+    /// </summary>
+    internal static string ToGrayscaleTempFile(string sourcePath)
+    {
+        string tempPath = Path.Combine(Path.GetTempPath(),
+                                       $"{Guid.NewGuid()}.png");
+
+        using (var image = SixLabors.ImageSharp.Image.Load<Rgba32>(sourcePath))
+        {
+            image.Mutate(ctx => ctx.Grayscale());
+            image.SaveAsPng(tempPath);
+        }
+
+        return tempPath;
+    }
+}
+
+// ───────────────────────────────────────────────
+//  OcrProcessor  —  multi-threaded OCR engine
+// ───────────────────────────────────────────────
+internal static class OcrProcessor
+{
+    private static readonly object _consoleLock = new();
+    private static readonly object _writerLock  = new();
+
+    internal static void ProcessAllImages(string inputDir, string outputDir,
+                                          string language)
+    {
+        if (!Directory.Exists(inputDir))
+            throw new DirectoryNotFoundException($"Input directory not found: {inputDir}");
+
+        Directory.CreateDirectory(outputDir);
+
+        string[] pngFiles = Directory.GetFiles(inputDir, "*.png");
+        if (pngFiles.Length == 0)
+            throw new FileNotFoundException($"No PNG files found in '{inputDir}'.");
+
+        Console.WriteLine($"Found {pngFiles.Length} PNG file(s) for OCR.");
+
+        string tessDataDir  = TesseractSetup.GetTessDataPath();
+        string combinedPath = Path.Combine(outputDir, "combined_output.txt");
+
+        using var combinedWriter = new StreamWriter(combinedPath, false,
+                                                     System.Text.Encoding.UTF8);
+
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Environment.ProcessorCount
+        };
+
+        Parallel.ForEach(pngFiles, options, pngFile =>
+        {
+            ProcessSingleImage(pngFile, outputDir, language,
+                               tessDataDir, combinedWriter);
+        });
+
+        Console.WriteLine($"Combined output saved to: {combinedPath}");
+    }
+
+    // ── private helpers ──
+
+    private static void ProcessSingleImage(string pngFile, string outputDir,
+                                            string language, string tessDataDir,
+                                            StreamWriter combinedWriter)
+    {
+        string? tempGray = null;
+        try
+        {
+            tempGray = ImagePreprocessor.ToGrayscaleTempFile(pngFile);
+
+            using var engine = new TesseractEngine(tessDataDir, language,
+                                                    EngineMode.Default);
+            using var img  = Pix.LoadFromFile(tempGray);
+            using var page = engine.Process(img);
+
+            string text = page.GetText();
+            string name = Path.GetFileName(pngFile);
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                WriteThreadSafe($"  ⚠ No text in '{name}'.");
+                return;
+            }
+
+            // Save individual file
+            string outFile = Path.Combine(outputDir,
+                Path.GetFileNameWithoutExtension(pngFile) + ".txt");
+            File.WriteAllText(outFile, text, System.Text.Encoding.UTF8);
+            WriteThreadSafe($"  ✓ {name} → {text.Length:N0} chars");
+
+            // Append to combined file
+            lock (_writerLock)
+            {
+                combinedWriter.WriteLine($"=== {name} ===");
+                combinedWriter.WriteLine(text);
+                combinedWriter.WriteLine();
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteThreadSafe($"  ✗ Error on '{Path.GetFileName(pngFile)}': {ex.Message}");
+        }
+        finally
+        {
+            if (tempGray != null && File.Exists(tempGray))
+                File.Delete(tempGray);
+        }
+    }
+
+    private static void WriteThreadSafe(string msg)
+    {
+        lock (_consoleLock) { Console.WriteLine(msg); }
+    }
+}

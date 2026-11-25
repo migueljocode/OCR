@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+publish/
+
+## IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+
+## OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+## AI Help (kept for reference but not critical)
+AI_Help/
