@@ -12,7 +12,7 @@ A three-step pipeline that converts scanned PDFs into searchable text.
 
 ## Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download) or later
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) or later
 - [Tesseract OCR engine](https://tesseract-ocr.github.io/tessdoc/Installation.html) installed on the system
 
 > **Note:** `PngToTxt` will **automatically download** the best `fas.traineddata` and `eng.traineddata` files to your system's Tesseract data directory. No manual download needed.
