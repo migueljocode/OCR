@@ -1,21 +1,22 @@
-# OCR Pipeline
+# OCR
 
-A three-step pipeline that converts scanned PDFs into searchable text.
+A unified, cross-platform CLI & interactive OCR tool for **PDFs**, **images**, and **image directories** using Tesseract OCR.
 
-## Pipeline Steps
+## Features
 
-| Step | Project | Description |
-|------|---------|-------------|
-| 1 | **PdfToPng** | Converts each PDF page into a high-resolution PNG image |
-| 2 | **PngToTxt** | Runs Tesseract OCR on each PNG (supports Persian & English) |
-| 3 | **TxtCombiner** | Merges all `Page_*.txt` files into a single ordered text file |
+- **Any supported input**:
+  - **PDF (`.pdf`)** — renders pages in parallel and runs OCR, outputting either **one combined `.txt`** for the whole PDF or **one `.txt` per page**
+  - **Single image** (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.gif`) — outputs **one `.txt` file**
+  - **Directory of images** — outputs either **one combined `.txt`** (with sorting by `number`, `name`, `date`, or `size`) or **one `.txt` per image**
+- **Auto-downloads** `fas.traineddata` and `eng.traineddata` (`tessdata_best`) to the OS Tesseract directory:
+  - Linux: `/usr/share/tesseract-ocr/5/tessdata`
+  - Windows: `C:\Program Files\Tesseract-OCR\tessdata`
+- **Dual mode**: Run with `-i` / CLI flags or run with no arguments for interactive prompts; `-h` / `--help` for usage.
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) or later
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) (for building from source)
 - [Tesseract OCR engine](https://tesseract-ocr.github.io/tessdoc/Installation.html) installed on the system
-
-> **Note:** `PngToTxt` will **automatically download** the best `fas.traineddata` and `eng.traineddata` files to your system's Tesseract data directory. No manual download needed.
 
 ### Linux (Ubuntu/Debian)
 ```bash
@@ -28,41 +29,28 @@ Download and install from: https://github.com/UB-Mannheim/tesseract/wiki
 ## Build & Run
 
 ```bash
-# Build entire solution
-dotnet build
-
-# Run each step
-dotnet run --project PdfToPng
-dotnet run --project PngToTxt
-dotnet run --project TxtCombiner
+dotnet build OCR.slnx
+dotnet run --project Ocr -- -h
 ```
 
-## Publish
-
-Each project can be published as a self-contained single-file executable:
+## Publish (Single-File Executable)
 
 ```bash
 # Linux x64
-dotnet publish PdfToPng  -c Release -r linux-x64
-dotnet publish PngToTxt  -c Release -r linux-x64
-dotnet publish TxtCombiner -c Release -r linux-x64
+dotnet publish Ocr -c Release -r linux-x64
 
 # Windows x64
-dotnet publish PdfToPng  -c Release -r win-x64
-dotnet publish PngToTxt  -c Release -r win-x64
-dotnet publish TxtCombiner -c Release -r win-x64
+dotnet publish Ocr -c Release -r win-x64
 ```
 
-Published binaries go to `<project>/publish/<rid>/`.
+Published binary goes to `Ocr/publish/<rid>/` (single self-contained compressed executable, no `.pdb`).
 
 ## Architecture
 
 ```
-Program.cs      →  Simple, self-explanatory entry point (< 10 lines)
-StaticMethods.cs →  All business logic, organized by Single Responsibility
+Ocr/
+├── GlobalUsings.cs   →  All global usings
+├── Program.cs        →  Clean presentation-style entry point
+├── StaticMethods.cs  →  SRP-organized helpers & OCR pipeline
+└── Ocr.csproj        →  .NET 10, compressed single-file publish config
 ```
-
-**Principles applied:** DRY · KISS · SRP
-- Cross-platform (Linux & Windows)
-- No traineddata files shipped in the project — auto-downloaded at runtime
-- Thread-safe parallel processing for maximum performance

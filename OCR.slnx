@@ -1,5 +1,3 @@
 <Solution>
-  <Project Path="PdfToPng/PdfToPng.csproj" />
-  <Project Path="PngToTxt/PngToTxt.csproj" />
-  <Project Path="TxtCombiner/TxtCombiner.csproj" />
+  <Project Path="Ocr/Ocr.csproj" />
 </Solution>
