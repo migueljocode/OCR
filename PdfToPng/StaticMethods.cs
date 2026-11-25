@@ -1,5 +1,3 @@
-using Syncfusion.PdfToImageConverter;
-
 namespace PdfToPng;
 
 // ───────────────────────────────────────────────

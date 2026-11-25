@@ -2,8 +2,6 @@
 //  TxtCombiner  —  Merge ordered Page_*.txt into one file
 // ──────────────────────────────────────────────────────────
 
-using TxtCombiner;
-
 string inputDir  = ConsoleHelper.Ask("Directory containing Page_*.txt files");
 string outputDir = ConsoleHelper.Ask("Output directory");
 

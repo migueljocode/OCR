@@ -2,8 +2,6 @@
 //  PngToTxt  —  OCR PNG images to text via Tesseract
 // ───────────────────────────────────────────────────────
 
-using PngToTxt;
-
 TesseractSetup.EnsureTrainedData("fas", "eng");
 
 string inputDir  = ConsoleHelper.Ask("PNG images directory");

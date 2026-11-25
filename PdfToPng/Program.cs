@@ -2,8 +2,6 @@
 //  PdfToPng  —  Convert each PDF page to a PNG
 // ──────────────────────────────────────────────
 
-using PdfToPng;
-
 string pdfPath      = ConsoleHelper.Ask("PDF file path");
 string outputDir    = ConsoleHelper.Ask("Output directory for PNGs");
 int    width        = ConsoleHelper.AskInt("Output width  (e.g. 1920)");

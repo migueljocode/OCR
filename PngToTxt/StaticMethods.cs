@@ -1,9 +1,3 @@
-using System.Runtime.InteropServices;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using Tesseract;
-
 namespace PngToTxt;
 
 // ───────────────────────────────────────────────
@@ -146,7 +140,7 @@ internal static class TesseractSetup
 }
 
 // ───────────────────────────────────────────────
-//  ImagePreprocessor  —  grayscale via ImageSharp
+//  ImagePreprocessor  —  grayscale via SkiaSharp
 // ───────────────────────────────────────────────
 internal static class ImagePreprocessor
 {
@@ -159,11 +153,26 @@ internal static class ImagePreprocessor
         string tempPath = Path.Combine(Path.GetTempPath(),
                                        $"{Guid.NewGuid()}.png");
 
-        using (var image = SixLabors.ImageSharp.Image.Load<Rgba32>(sourcePath))
+        using var original = SKBitmap.Decode(sourcePath);
+        using var grayscale = new SKBitmap(original.Width, original.Height);
+
+        using (var canvas = new SKCanvas(grayscale))
         {
-            image.Mutate(ctx => ctx.Grayscale());
-            image.SaveAsPng(tempPath);
+            using var paint = new SKPaint();
+            paint.ColorFilter = SKColorFilter.CreateColorMatrix(
+            [
+                0.299f, 0.587f, 0.114f, 0, 0,
+                0.299f, 0.587f, 0.114f, 0, 0,
+                0.299f, 0.587f, 0.114f, 0, 0,
+                0,      0,      0,      1, 0
+            ]);
+            canvas.DrawBitmap(original, 0, 0, paint);
         }
+
+        using var image = SKImage.FromBitmap(grayscale);
+        using var data  = image.Encode(SKEncodedImageFormat.Png, 100);
+        using var stream = File.OpenWrite(tempPath);
+        data.SaveTo(stream);
 
         return tempPath;
     }
@@ -195,7 +204,7 @@ internal static class OcrProcessor
         string combinedPath = Path.Combine(outputDir, "combined_output.txt");
 
         using var combinedWriter = new StreamWriter(combinedPath, false,
-                                                     System.Text.Encoding.UTF8);
+                                                     Encoding.UTF8);
 
         var options = new ParallelOptions
         {
@@ -239,7 +248,7 @@ internal static class OcrProcessor
             // Save individual file
             string outFile = Path.Combine(outputDir,
                 Path.GetFileNameWithoutExtension(pngFile) + ".txt");
-            File.WriteAllText(outFile, text, System.Text.Encoding.UTF8);
+            File.WriteAllText(outFile, text, Encoding.UTF8);
             WriteThreadSafe($"  ✓ {name} → {text.Length:N0} chars");
 
             // Append to combined file
