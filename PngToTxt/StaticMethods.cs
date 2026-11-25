@@ -160,45 +160,6 @@ internal static class TesseractSetup
 }
 
 // ───────────────────────────────────────────────
-//  ImagePreprocessor  —  grayscale via SkiaSharp
-// ───────────────────────────────────────────────
-internal static class ImagePreprocessor
-{
-    /// <summary>
-    /// Loads an image, converts to grayscale, saves to a temp file,
-    /// and returns the temp path. Caller must delete the file.
-    /// </summary>
-    internal static string ToGrayscaleTempFile(string sourcePath)
-    {
-        string tempPath = Path.Combine(Path.GetTempPath(),
-                                       $"{Guid.NewGuid()}.png");
-
-        using var original = SKBitmap.Decode(sourcePath);
-        using var grayscale = new SKBitmap(original.Width, original.Height);
-
-        using (var canvas = new SKCanvas(grayscale))
-        {
-            using var paint = new SKPaint();
-            paint.ColorFilter = SKColorFilter.CreateColorMatrix(
-            [
-                0.299f, 0.587f, 0.114f, 0, 0,
-                0.299f, 0.587f, 0.114f, 0, 0,
-                0.299f, 0.587f, 0.114f, 0, 0,
-                0,      0,      0,      1, 0
-            ]);
-            canvas.DrawBitmap(original, 0, 0, paint);
-        }
-
-        using var image = SKImage.FromBitmap(grayscale);
-        using var data  = image.Encode(SKEncodedImageFormat.Png, 100);
-        using var stream = File.OpenWrite(tempPath);
-        data.SaveTo(stream);
-
-        return tempPath;
-    }
-}
-
-// ───────────────────────────────────────────────
 //  OcrProcessor  —  multi-threaded OCR engine
 // ───────────────────────────────────────────────
 internal static class OcrProcessor
@@ -246,12 +207,9 @@ internal static class OcrProcessor
                                             string language, string tessDataDir,
                                             StreamWriter combinedWriter)
     {
-        string? tempGray = null;
         try
         {
-            tempGray = ImagePreprocessor.ToGrayscaleTempFile(pngFile);
-
-            string text = RunTesseract(tempGray, tessDataDir, language);
+            string text = RunTesseract(pngFile, tessDataDir, language);
             string name = Path.GetFileName(pngFile);
 
             if (string.IsNullOrWhiteSpace(text))
@@ -279,11 +237,6 @@ internal static class OcrProcessor
             string msg = ex.InnerException?.Message ?? ex.Message;
             WriteThreadSafe($"  ✗ Error on '{Path.GetFileName(pngFile)}': {msg}");
         }
-        finally
-        {
-            if (tempGray != null && File.Exists(tempGray))
-                File.Delete(tempGray);
-        }
     }
 
     private static string RunTesseract(string imagePath, string tessDataDir, string language)
@@ -298,6 +251,9 @@ internal static class OcrProcessor
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        // Prevent OpenMP thread oversubscription when running multiple files in parallel
+        psi.Environment["OMP_THREAD_LIMIT"] = "1";
+
         psi.ArgumentList.Add(imagePath);
         psi.ArgumentList.Add("stdout");
         psi.ArgumentList.Add("--tessdata-dir");
@@ -308,8 +264,9 @@ internal static class OcrProcessor
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start tesseract process.");
 
+        var errorTask = process.StandardError.ReadToEndAsync();
         string output = process.StandardOutput.ReadToEnd();
-        string error = process.StandardError.ReadToEnd();
+        string error  = errorTask.GetAwaiter().GetResult();
         process.WaitForExit();
 
         if (process.ExitCode != 0)
